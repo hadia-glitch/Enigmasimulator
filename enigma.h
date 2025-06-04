@@ -1,151 +1,135 @@
-#ifndef ENIGMA_H
-#define ENIGMA_H
-
-#include <vector>
-#include <string>
-#include <cctype>
-#include <memory>
-#include <unordered_map>
-
-class Rotor {
+#ifndef ENIGMA_H 
+#define ENIGMA_H 
+ 
+#include <string> 
+#include <vector> 
+#include <unordered_map> 
+#include <stdexcept> #include <algorithm> 
+#include <sstream> // Required for std::istringstream 
+ 
+// Rotor class representing a single rotor in the Enigma machine class Rotor { public: 
+    explicit Rotor(const std::string& mapping, const std::string& notchPosition = "") 
+        : mapping(mapping), reverseMapping(26), position(0), notchPosition(notchPosition) {         if (mapping.length() != 26) { 
+            throw std::invalid_argument("Rotor mapping must have exactly 26 characters."); 
+        } 
+        for (size_t i = 0; i < mapping.size(); ++i) {             reverseMapping[mapping[i] - 'A'] = 'A' + i; 
+        } 
+    } 
+ 
+    void SetPosition(int pos) {         position = pos % 26; 
+    } 
+ 
+    char EncryptForward(char input) const {         int index = (input - 'A' + position) % 26; 
+        return mapping[index] - position < 'A' ? mapping[index] - position + 26 : mapping[index] - position; 
+    } 
+ 
+    char EncryptBackward(char input) const {         int index = (input - 'A' + position) % 26;         return reverseMapping[index] - position < 'A' ? reverseMapping[index] - position + 26 : reverseMapping[index] - position; 
+    } 
+ 
+    void Step() { 
+        position = (position + 1) % 26; 
+    } 
+ 
+    bool AtNotch() const { 
+        return notchPosition.find('A' + position) != std::string::npos; 
+    } 
+ 
+private: 
+    std::string mapping;     std::vector<char> reverseMapping;     int position;     std::string notchPosition; 
+}; 
+ 
+// Reflector class representing the reflector in the Enigma machine class Reflector { public: 
+    explicit Reflector(const std::string& mapping) {         if (mapping.length() != 26) { 
+            throw std::invalid_argument("Reflector mapping must have exactly 26 characters."); 
+        } 
+        this->mapping = mapping; 
+    } 
+ 
+    char Reflect(char input) const {         return mapping[input - 'A']; 
+    } 
+ 
+private: 
+    std::string mapping; 
+}; 
+ 
+// Plugboard class representing the plugboard configuration class Plugboard { 
 public:
-    Rotor(const std::string& wiring, int position = 0)
-        : wiring(wiring), position(position) {}
-
-    char Encrypt(char input) {
-        int index = (toupper(input) - 'A' + position) % 26;
-        return wiring[index];
-    }
-
-    char ReverseEncrypt(char input) {
-        int index = wiring.find(toupper(input));
-        index = (index - position + 26) % 26;
-        return 'A' + index;
-    }
-
-    void Rotate() {
-        position = (position + 1) % 26;
-    }
-
-    int getPosition() const {
-        return position;
-    }
-
-private:
-    std::string wiring;
-    int position;
-};
-
-class Reflector {
-public:
-    Reflector(const std::string& wiring) : wiring(wiring) {}
-
-    char Reflect(char input) {
-        return wiring[toupper(input) - 'A'];
-    }
-
-private:
-    std::string wiring;
-};
-
-class Plugboard {
-public:
-    Plugboard() {
-        for (char c = 'A'; c <= 'Z'; ++c) {
-            swapMap[c] = c;
-        }
-    }
-
-    void Configure(const std::string& pairs) {
-        for (size_t i = 0; i < pairs.size(); i += 2) {
-            swapMap[pairs[i]] = pairs[i + 1];
-            swapMap[pairs[i + 1]] = pairs[i];
-        }
-    }
-
-    char Swap(char input) {
-        return swapMap[input];
-    }
-
-    void Clear() {
-        for (char c = 'A'; c <= 'Z'; ++c) {
-            swapMap[c] = c;
-        }
-    }
-
-private:
-    std::unordered_map<char, char> swapMap;
-};
-
-class EnigmaMachine {
-public:
-    EnigmaMachine(const std::vector<Rotor>& rotors, const Reflector& reflector, const Plugboard& plugboard)
-        : rotors(rotors), reflector(reflector), plugboard(plugboard) {}
-
-    std::string EncryptDecrypt(const std::string& input) {
-        std::string result;
-        for (char c : input) {
-            if (isalpha(c)) {  // Ensure it's a valid character
-                c = toupper(c);  // Convert to uppercase (if needed)
-                result += EncryptDecryptChar(c);  // Encrypt or decrypt each character
-            } else {
-                result += c; // Preserve non-alphabet characters
+    Plugboard() : wiring(26) {         for (char c = 'A'; c <= 'Z'; ++c) {             wiring[c - 'A'] = c; 
+        } 
+    } 
+ 
+    void Configure(const std::string& pairs) {         Reset(); 
+        std::istringstream ss(pairs);         std::string pair;         while (ss >> pair) { 
+            if (pair.length() != 2 || !isalpha(pair[0]) || !isalpha(pair[1])) {                 throw std::invalid_argument("Invalid plugboard configuration."); 
+            } 
+            char a = toupper(pair[0]);             char b = toupper(pair[1]);             wiring[a - 'A'] = b;             wiring[b - 'A'] = a; 
+        } 
+    } 
+ 
+    char Substitute(char input) const {         return wiring[input - 'A']; 
+    } 
+ 
+private: 
+    void Reset() { 
+        for (char c = 'A'; c <= 'Z'; ++c) { 
+            wiring[c - 'A'] = c; 
+        } 
+    } 
+ 
+    std::vector<char> wiring; 
+}; 
+ 
+// EnigmaMachine class representing the entire Enigma machine class EnigmaMachine { public: 
+    EnigmaMachine(const std::vector<Rotor>& rotors, const Reflector& reflector, const Plugboard& plugboard) 
+        : rotors(rotors), reflector(reflector), plugboard(plugboard) {} 
+ 
+    void SetRotorPositions(const std::vector<int>& positions) {         if (positions.size() != rotors.size()) { 
+            throw std::invalid_argument("Number of positions must match the number of rotors."); 
+        } 
+        for (size_t i = 0; i < rotors.size(); ++i) {             rotors[i].SetPosition(positions[i]); 
+        } 
+    } 
+ 
+    std::string EncryptDecrypt(const std::string& message) {         std::string result;         for (char c : message) {             if (!isalpha(c)) { 
+                result += c; // Non-alphabetic characters remain unchanged                 continue; 
             }
-        }
-        return result;
-    }
-
-    void ConfigurePlugboard(const std::string& pairs) {
-        plugboard.Clear();
-        plugboard.Configure(pairs);
-    }
-
-private:
-    char EncryptDecryptChar(char input) {
-        // Step 1: Pass through the plugboard
-        input = plugboard.Swap(input);
-
-        // Step 2: Pass through the rotors
-        for (auto& rotor : rotors) {
-            input = rotor.Encrypt(input);
-        }
-
-        // Step 3: Reflect
-        input = reflector.Reflect(input);
-
-        // Step 4: Pass through the rotors in reverse order
-        for (auto it = rotors.rbegin(); it != rotors.rend(); ++it) {
-            input = it->ReverseEncrypt(input);
-        }
-
-        // Step 5: Pass through the plugboard again
-        input = plugboard.Swap(input);
-
-        // Step 6: Rotate the rotors
-        rotateRotors();
-
-        return input;
-    }
-
-    void rotateRotors() {
-        bool rotateNext = true;
-        for (auto& rotor : rotors) {
-            if (rotateNext) {
-                rotor.Rotate();
-                rotateNext = (rotor.getPosition() == 0);  // Only rotate the next rotor if the current rotor completed a full turn
-            } else {
-                break;
-            }
-        }
-    }
-
-    std::vector<Rotor> rotors;
-    Reflector reflector;
-    Plugboard plugboard;
-};
-
-#endif // ENIGMA_H
-
+            char letter = toupper(c); 
+ 
+            // Plugboard substitution             letter = plugboard.Substitute(letter); 
+ 
+            // Forward through rotors             for (auto& rotor : rotors) {                 letter = rotor.EncryptForward(letter); 
+            } 
+ 
+            // Reflector 
+            letter = reflector.Reflect(letter); 
+ 
+            // Backward through rotors 
+            for (auto it = rotors.rbegin(); it != rotors.rend(); ++it) {                 letter = it->EncryptBackward(letter); 
+            } 
+ 
+            // Plugboard substitution             letter = plugboard.Substitute(letter); 
+ 
+            result += letter; 
+ 
+            // Step rotors 
+            StepRotors(); 
+        } 
+        return result; 
+    } 
+ 
+private: 
+    void StepRotors() { 
+        for (size_t i = 0; i < rotors.size(); ++i) {             rotors[i].Step(); 
+            if (i == rotors.size() - 1 || !rotors[i].AtNotch()) {                 break; 
+            } 
+        } 
+    } 
+ 
+    std::vector<Rotor> rotors;     Reflector reflector; 
+    Plugboard plugboard; 
+}; 
+ 
+#endif // ENIGMA_H 
 
 
 
